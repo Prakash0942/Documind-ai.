@@ -7,3 +7,4 @@ google-genai
 pymupdf
 python-docx
 langchain-text-splitters
+faiss-cpu

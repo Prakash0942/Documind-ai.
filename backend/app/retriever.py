@@ -1,28 +1,53 @@
+
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from app.config import EMBEDDING_MODEL, TOP_K
 
 
 class DocumentRetriever:
     def __init__(self):
-        self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+        self.embedding_model = None
         self.index = None
         self.chunks = []
+
+    def _get_embedding_model(self):
+        if self.embedding_model is None:
+            from sentence_transformers import SentenceTransformer
+
+            self.embedding_model = SentenceTransformer(
+                EMBEDDING_MODEL,
+                device="cpu"
+            )
+
+        return self.embedding_model
 
     def build_index(self, chunks):
         if not chunks:
             raise ValueError("No chunks to index.")
 
+        model = self._get_embedding_model()
         texts = [chunk["text"] for chunk in chunks]
+        embedding_batches = []
 
-        embeddings = self.embedding_model.encode(
-            texts,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            show_progress_bar=True
-        ).astype("float32")
+        batch_size = 8
+
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start:start + batch_size]
+
+            embeddings = model.encode(
+                batch,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+                batch_size=batch_size
+            )
+
+            embedding_batches.append(
+                np.asarray(embeddings, dtype=np.float32)
+            )
+
+        embeddings = np.concatenate(embedding_batches, axis=0)
 
         self.index = faiss.IndexFlatIP(embeddings.shape[1])
         self.index.add(embeddings)
@@ -32,10 +57,13 @@ class DocumentRetriever:
         if self.index is None:
             raise ValueError("Index a document before searching.")
 
-        query_vector = self.embedding_model.encode(
+        model = self._get_embedding_model()
+
+        query_vector = model.encode(
             [question],
             convert_to_numpy=True,
-            normalize_embeddings=True
+            normalize_embeddings=True,
+            show_progress_bar=False
         ).astype("float32")
 
         scores, indices = self.index.search(

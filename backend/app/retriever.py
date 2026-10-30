@@ -1,5 +1,13 @@
 
 
+
+import os
+
+# Limit CPU thread usage on Render
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import faiss
 import numpy as np
 
@@ -8,7 +16,7 @@ from app.config import EMBEDDING_MODEL, TOP_K
 
 class DocumentRetriever:
 
-    # Shared model across all document retrievers
+    # Load the embedding model only once
     _embedding_model = None
 
     def __init__(self):
@@ -18,12 +26,17 @@ class DocumentRetriever:
     @classmethod
     def _get_embedding_model(cls):
         if cls._embedding_model is None:
+            import torch
             from sentence_transformers import SentenceTransformer
+
+            torch.set_num_threads(1)
 
             cls._embedding_model = SentenceTransformer(
                 EMBEDDING_MODEL,
                 device="cpu"
             )
+
+            cls._embedding_model.eval()
 
         return cls._embedding_model
 
@@ -33,29 +46,33 @@ class DocumentRetriever:
 
         model = self._get_embedding_model()
 
-        texts = [
-            chunk["text"]
-            for chunk in chunks
+        valid_chunks = [
+            chunk for chunk in chunks
             if chunk.get("text", "").strip()
         ]
 
-        if not texts:
+        if not valid_chunks:
             raise ValueError("No valid text chunks found.")
 
+        self.chunks = valid_chunks
+
+        batch_size = 1
         embedding_batches = []
 
-        # Smaller batches reduce peak memory usage
-        batch_size = 2
+        for start in range(0, len(self.chunks), batch_size):
+            batch_chunks = self.chunks[start:start + batch_size]
 
-        for start in range(0, len(texts), batch_size):
-            batch = texts[start:start + batch_size]
+            texts = [
+                chunk["text"]
+                for chunk in batch_chunks
+            ]
 
             embeddings = model.encode(
-                batch,
+                texts,
                 convert_to_numpy=True,
                 normalize_embeddings=True,
                 show_progress_bar=False,
-                batch_size=batch_size
+                batch_size=1
             )
 
             embedding_batches.append(
@@ -73,17 +90,9 @@ class DocumentRetriever:
 
         self.index.add(embeddings)
 
-        # Keep only chunks corresponding to embedded texts
-        self.chunks = [
-            chunk for chunk in chunks
-            if chunk.get("text", "").strip()
-        ]
-
     def search(self, question, top_k=TOP_K):
         if self.index is None:
-            raise ValueError(
-                "Index a document before searching."
-            )
+            raise ValueError("Index a document before searching.")
 
         if not question or not question.strip():
             raise ValueError("Question cannot be empty.")

@@ -11,10 +11,18 @@ def create_chunks(pages):
     chunks = []
 
     for page in pages:
-        for text in splitter.split_text(page["text"]):
+        text = page.get("text", "").strip()
+
+        if not text:
+            continue
+
+        for chunk in splitter.split_text(text):
             chunks.append({
-                "text": text,
+                "text": chunk,
                 "page": page["page"]
             })
+
+    if not chunks:
+        raise ValueError("No valid text chunks were created.")
 
     return chunks

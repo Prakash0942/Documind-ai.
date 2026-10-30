@@ -190,3 +190,14 @@ def delete_document(document_id: str):
         "filename": document["filename"],
     }
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://documind-ai-mocha-xi.vercel.app/"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)

@@ -19,6 +19,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://documind-ai-mocha-xi.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -190,14 +191,3 @@ def delete_document(document_id: str):
         "filename": document["filename"],
     }
 
-from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://documind-ai-mocha-xi.vercel.app/"
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)

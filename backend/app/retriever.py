@@ -1,91 +1,102 @@
 
 
 
-import os
-
-# Limit CPU thread usage on Render
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import faiss
 import numpy as np
 
-from app.config import EMBEDDING_MODEL, TOP_K
+from google import genai
+from google.genai import types
+
+from app.config import GEMINI_API_KEY, TOP_K
+
+
+EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_DIMENSION = 768
+BATCH_SIZE = 16
 
 
 class DocumentRetriever:
 
-    # Load the embedding model only once
-    _embedding_model = None
+    _client = None
 
     def __init__(self):
         self.index = None
         self.chunks = []
 
     @classmethod
-    def _get_embedding_model(cls):
-        if cls._embedding_model is None:
-            import torch
-            from sentence_transformers import SentenceTransformer
+    def _get_client(cls):
+        if cls._client is None:
+            if not GEMINI_API_KEY:
+                raise ValueError("GEMINI_API_KEY is missing.")
 
-            torch.set_num_threads(1)
-
-            cls._embedding_model = SentenceTransformer(
-                EMBEDDING_MODEL,
-                device="cpu"
+            cls._client = genai.Client(
+                api_key=GEMINI_API_KEY
             )
 
-            cls._embedding_model.eval()
+        return cls._client
 
-        return cls._embedding_model
+    @classmethod
+    def _generate_embeddings(cls, texts, task_type):
+        client = cls._get_client()
+        all_embeddings = []
+
+        for start in range(0, len(texts), BATCH_SIZE):
+            batch = texts[start:start + BATCH_SIZE]
+
+            response = client.models.embed_content(
+                model=EMBEDDING_MODEL,
+                contents=batch,
+                config=types.EmbedContentConfig(
+                    task_type=task_type,
+                    output_dimensionality=EMBEDDING_DIMENSION
+                )
+            )
+
+            if not response.embeddings:
+                raise ValueError("Google returned no embeddings.")
+
+            for item in response.embeddings:
+                all_embeddings.append(item.values)
+
+        embeddings = np.asarray(
+            all_embeddings,
+            dtype=np.float32
+        )
+
+        if embeddings.shape != (
+            len(texts),
+            EMBEDDING_DIMENSION
+        ):
+            raise ValueError("Unexpected embedding dimensions.")
+
+        faiss.normalize_L2(embeddings)
+
+        return embeddings
 
     def build_index(self, chunks):
         if not chunks:
             raise ValueError("No chunks to index.")
 
-        model = self._get_embedding_model()
-
-        valid_chunks = [
+        self.chunks = [
             chunk for chunk in chunks
             if chunk.get("text", "").strip()
         ]
 
-        if not valid_chunks:
+        if not self.chunks:
             raise ValueError("No valid text chunks found.")
 
-        self.chunks = valid_chunks
+        texts = [
+            chunk["text"] for chunk in self.chunks
+        ]
 
-        batch_size = 1
-        embedding_batches = []
-
-        for start in range(0, len(self.chunks), batch_size):
-            batch_chunks = self.chunks[start:start + batch_size]
-
-            texts = [
-                chunk["text"]
-                for chunk in batch_chunks
-            ]
-
-            embeddings = model.encode(
-                texts,
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-                show_progress_bar=False,
-                batch_size=1
-            )
-
-            embedding_batches.append(
-                np.asarray(embeddings, dtype=np.float32)
-            )
-
-        embeddings = np.concatenate(
-            embedding_batches,
-            axis=0
+        embeddings = self._generate_embeddings(
+            texts,
+            "RETRIEVAL_DOCUMENT"
         )
 
         self.index = faiss.IndexFlatIP(
-            embeddings.shape[1]
+            EMBEDDING_DIMENSION
         )
 
         self.index.add(embeddings)
@@ -97,18 +108,13 @@ class DocumentRetriever:
         if not question or not question.strip():
             raise ValueError("Question cannot be empty.")
 
-        model = self._get_embedding_model()
-
-        query_vector = model.encode(
+        query_embeddings = self._generate_embeddings(
             [question],
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-            batch_size=1
-        ).astype(np.float32)
+            "RETRIEVAL_QUERY"
+        )
 
         scores, indices = self.index.search(
-            query_vector,
+            query_embeddings,
             min(top_k, self.index.ntotal)
         )
 

@@ -1,16 +1,17 @@
+
 from google import genai
 
 from app.config import GEMINI_API_KEY, MODEL_NAME
 
+
 if not GEMINI_API_KEY:
-    raise ValueError(
-        "GEMINI_API_KEY is missing. Add it to your .env file."
-    )
+    raise ValueError("GEMINI_API_KEY is missing.")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def generate_answer(question, results):
+
     if not results:
         return "No relevant document content was found."
 
@@ -39,4 +40,7 @@ QUESTION:
         contents=prompt
     )
 
-    return response.text or "The model returned no text."
+    if not response or not response.text:
+        return "The model returned no text."
+
+    return response.text

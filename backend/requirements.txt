@@ -8,4 +8,3 @@ pymupdf
 python-docx
 langchain-text-splitters
 faiss-cpu
-sentence-transformers

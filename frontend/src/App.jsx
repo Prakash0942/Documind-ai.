@@ -130,7 +130,9 @@
 
 
 
+
 import { useEffect, useRef, useState } from "react";
+
 import {
   FileText,
   UploadCloud,
@@ -145,11 +147,13 @@ import {
   getDocuments,
   uploadDocument,
   askQuestion,
+  summarizeDocument,
   deleteDocument,
 } from "./services/api";
 
 import DocumentList from "./components/DocumentList";
 import ChatPanel from "./components/ChatPanel";
+
 import "./styles.css";
 
 export default function App() {
@@ -157,8 +161,11 @@ export default function App() {
   const [selectedId, setSelectedId] = useState("");
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+
   const [error, setError] = useState("");
 
   const fileRef = useRef(null);
@@ -167,6 +174,7 @@ export default function App() {
     (doc) => doc.document_id === selectedId
   );
 
+  // Load uploaded documents
   async function loadDocuments() {
     try {
       const data = await getDocuments();
@@ -188,6 +196,7 @@ export default function App() {
     loadDocuments();
   }, []);
 
+  // Upload documents
   async function handleUpload(event) {
     const files = Array.from(event.target.files || []);
 
@@ -236,10 +245,13 @@ export default function App() {
     }
   }
 
+  // Ask questions about the selected document
   async function handleAsk(event) {
     event.preventDefault();
 
-    if (!question.trim() || !selectedId || loading) return;
+    if (!question.trim() || !selectedId || loading || summarizing) {
+      return;
+    }
 
     const currentQuestion = question.trim();
 
@@ -273,6 +285,31 @@ export default function App() {
     }
   }
 
+  // Automatically summarize the selected document
+  async function handleSummarize() {
+    if (!selectedId || summarizing || loading) return;
+
+    setSummarizing(true);
+    setError("");
+
+    try {
+      const result = await summarizeDocument(selectedId);
+
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content: `## Document Summary\n\n${result.summary}`,
+        },
+      ]);
+    } catch (err) {
+      setError(`Summarization failed: ${err.message}`);
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
+  // Delete a document
   async function handleDelete(documentId) {
     const document = documents.find(
       (doc) => doc.document_id === documentId
@@ -306,12 +343,13 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {/* Sidebar with document list */}
+      {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-icon">
             <Sparkles size={20} />
           </div>
+
           <div>
             <h2>DocuMind AI</h2>
             <p>Document Workspace</p>
@@ -332,7 +370,7 @@ export default function App() {
         />
       </aside>
 
-      {/* Main chat workspace */}
+      {/* Main workspace */}
       <main className="main-panel">
         <header className="topbar">
           <div className="brand">
@@ -358,9 +396,7 @@ export default function App() {
               <UploadCloud size={17} />
             )}
 
-            {uploading
-              ? "Processing..."
-              : "Upload document"}
+            {uploading ? "Processing..." : "Upload document"}
           </button>
         </header>
 
@@ -378,6 +414,7 @@ export default function App() {
             </p>
           </div>
 
+          {/* Error message */}
           {error && (
             <div className="error-banner">
               <span>{error}</span>
@@ -392,6 +429,7 @@ export default function App() {
           )}
 
           <section className="chat-card">
+            {/* Chat header */}
             <div className="chat-header">
               <div>
                 <MessageSquare size={20} />
@@ -407,11 +445,36 @@ export default function App() {
                 </div>
               </div>
 
-              <span className="status-badge">
-                {selectedDocument ? "Ready" : "No document"}
-              </span>
+              <div className="chat-header-actions">
+                {selectedDocument && (
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={handleSummarize}
+                    disabled={summarizing || loading}
+                  >
+                    {summarizing ? (
+                      <LoaderCircle
+                        className="spin"
+                        size={17}
+                      />
+                    ) : (
+                      <Sparkles size={17} />
+                    )}
+
+                    {summarizing
+                      ? "Summarizing..."
+                      : "Summarize"}
+                  </button>
+                )}
+
+                <span className="status-badge">
+                  {selectedDocument ? "Ready" : "No document"}
+                </span>
+              </div>
             </div>
 
+            {/* Chat panel */}
             {!selectedDocument ? (
               <div className="empty-state">
                 <div className="empty-icon">
@@ -438,10 +501,11 @@ export default function App() {
             ) : (
               <ChatPanel
                 messages={messages}
-                loading={loading}
+                loading={loading || summarizing}
               />
             )}
 
+            {/* Question input */}
             <form
               className="question-form"
               onSubmit={handleAsk}
@@ -466,7 +530,9 @@ export default function App() {
                     ? "Ask anything about this document..."
                     : "Upload a document first..."
                 }
-                disabled={!selectedDocument || loading}
+                disabled={
+                  !selectedDocument || loading || summarizing
+                }
               />
 
               <div className="form-footer">
@@ -482,11 +548,12 @@ export default function App() {
                   disabled={
                     !selectedDocument ||
                     !question.trim() ||
-                    loading
+                    loading ||
+                    summarizing
                   }
                   aria-label="Send question"
                 >
-                  {loading ? (
+                  {loading || summarizing ? (
                     <LoaderCircle
                       className="spin"
                       size={17}

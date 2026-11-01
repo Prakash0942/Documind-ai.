@@ -3,7 +3,7 @@
 from app.document_loader import load_document
 from app.chunker import create_chunks
 from app.retriever import DocumentRetriever
-from app.llm import generate_answer
+from app.llm import generate_answer, summarize_document
 
 
 class DocumentIntelligence:
@@ -13,7 +13,6 @@ class DocumentIntelligence:
         self.loaded = False
 
     def index_document(self, file_path):
-
         pages = load_document(file_path)
 
         if not pages:
@@ -25,7 +24,6 @@ class DocumentIntelligence:
             raise ValueError("No text chunks generated.")
 
         self.retriever.build_index(chunks)
-
         self.loaded = True
 
         return {
@@ -34,7 +32,6 @@ class DocumentIntelligence:
         }
 
     def ask(self, question):
-
         if not self.loaded:
             raise ValueError("Please index a document first.")
 
@@ -42,12 +39,6 @@ class DocumentIntelligence:
             raise ValueError("Question cannot be empty.")
 
         results = self.retriever.search(question)
-
-        if not results:
-            raise ValueError(
-                "No relevant information found in the document."
-            )
-
         answer = generate_answer(question, results)
 
         return {
@@ -60,4 +51,20 @@ class DocumentIntelligence:
                 }
                 for item in results
             ]
+        }
+
+    def summarize(self):
+        if not self.loaded:
+            raise ValueError("Please upload a document first.")
+
+        chunks = self.retriever.chunks
+
+        if not chunks:
+            raise ValueError("No document content available.")
+
+        summary = summarize_document(chunks)
+
+        return {
+            "summary": summary,
+            "total_chunks": len(chunks)
         }

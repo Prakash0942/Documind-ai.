@@ -1,4 +1,5 @@
 
+
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -41,6 +42,15 @@ export async function askQuestion(documentId, question) {
       question,
     }),
   });
+}
+
+export async function summarizeDocument(documentId) {
+  return request(
+    `/documents/${encodeURIComponent(documentId)}/summarize`,
+    {
+      method: "POST",
+    }
+  );
 }
 
 export async function deleteDocument(documentId) {

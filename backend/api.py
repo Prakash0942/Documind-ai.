@@ -4,16 +4,20 @@ from uuid import uuid4
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel, Field
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.pipeline import DocumentIntelligence
 from app.config import DOCUMENT_DIR
-from fastapi.middleware.cors import CORSMiddleware
+
+
 app = FastAPI(
     title="AI Document Intelligence API",
-    description="Upload multiple documents and ask questions using RAG.",
-    version="2.0.0",
+    description="Upload documents, ask questions, and generate AI summaries.",
+    version="2.1.0",
 )
 
+
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -26,16 +30,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Document storage configuration
 DOCUMENTS_DIR = Path(DOCUMENT_DIR).resolve()
 DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".docx"}
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB per file
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 
 # Each document has its own independent RAG engine.
 document_store = {}
 
 
+# Request schema
 class QuestionRequest(BaseModel):
     document_id: str = Field(
         min_length=1,
@@ -48,27 +55,33 @@ class QuestionRequest(BaseModel):
     )
 
 
+# Home endpoint
 @app.get("/")
 def home():
     return {
         "message": "AI Document Intelligence API is running",
+        "version": "2.1.0",
         "docs": "/docs",
         "endpoints": [
             "POST /documents/upload",
             "GET /documents",
             "POST /questions",
+            "POST /documents/{document_id}/summarize",
             "DELETE /documents/{document_id}",
         ],
     }
 
 
+# Health check
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
 
 
+# Upload and index document
 @app.post("/documents/upload")
 async def upload_document(file: UploadFile = File(...)):
+
     original_name = Path(file.filename or "").name
     extension = Path(original_name).suffix.lower()
 
@@ -99,11 +112,9 @@ async def upload_document(file: UploadFile = File(...)):
     try:
         file_path.write_bytes(content)
 
-        # Build a separate index for this document.
         engine = DocumentIntelligence()
         indexing_result = engine.index_document(str(file_path))
 
-        # Register the document only after indexing succeeds.
         document_store[document_id] = {
             "filename": original_name,
             "path": str(file_path),
@@ -120,6 +131,7 @@ async def upload_document(file: UploadFile = File(...)):
 
     except Exception as exc:
         file_path.unlink(missing_ok=True)
+
         raise HTTPException(
             status_code=500,
             detail=f"Document processing failed: {str(exc)}",
@@ -129,6 +141,7 @@ async def upload_document(file: UploadFile = File(...)):
         await file.close()
 
 
+# List uploaded documents
 @app.get("/documents")
 def list_documents():
     return {
@@ -144,8 +157,10 @@ def list_documents():
     }
 
 
+# Ask questions about uploaded documents
 @app.post("/questions")
 def ask_question(request: QuestionRequest):
+
     document = document_store.get(request.document_id)
 
     if document is None:
@@ -172,8 +187,39 @@ def ask_question(request: QuestionRequest):
         ) from exc
 
 
+# Generate AI document summary
+@app.post("/documents/{document_id}/summarize")
+def summarize_document_api(document_id: str):
+
+    document = document_store.get(document_id)
+
+    if document is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found. Upload it again or check its ID.",
+        )
+
+    try:
+        result = document["engine"].summarize()
+
+        return {
+            "document_id": document_id,
+            "document": document["filename"],
+            "summary": result["summary"],
+            "total_chunks": result["total_chunks"],
+        }
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Summarization failed: {str(exc)}",
+        ) from exc
+
+
+# Delete uploaded document
 @app.delete("/documents/{document_id}")
 def delete_document(document_id: str):
+
     document = document_store.pop(document_id, None)
 
     if document is None:

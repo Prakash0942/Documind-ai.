@@ -700,3 +700,69 @@ button:disabled {
   font-size: 12px;
   line-height: 1.6;
 }
+
+
+/* Markdown formatting inside chat messages */
+
+.message-content {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.message-content h1,
+.message-content h2,
+.message-content h3 {
+  margin: 16px 0 10px;
+  line-height: 1.4;
+}
+
+.message-content h2 {
+  font-size: 20px;
+}
+
+.message-content h3 {
+  font-size: 17px;
+}
+
+.message-content p {
+  margin: 8px 0;
+}
+
+.message-content ul,
+.message-content ol {
+  margin: 10px 0;
+  padding-left: 24px;
+}
+
+.message-content li {
+  margin-bottom: 6px;
+}
+
+.message-content strong {
+  font-weight: 700;
+}
+
+.message-content code {
+  background: rgba(128, 128, 128, 0.15);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.message-content pre {
+  overflow-x: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.message-content pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.message-content blockquote {
+  border-left: 3px solid #888;
+  padding-left: 12px;
+  margin: 12px 0;
+}

@@ -1,5 +1,12 @@
 
-import { Bot, User, FileText, Sparkles } from "lucide-react";
+import {
+  Bot,
+  User,
+  FileText,
+  Sparkles,
+} from "lucide-react";
+
+import ReactMarkdown from "react-markdown";
 import SourceCard from "./SourceCard";
 
 export default function ChatPanel({ messages, loading }) {
@@ -9,11 +16,14 @@ export default function ChatPanel({ messages, loading }) {
         <div className="assistant-icon">
           <Sparkles size={23} />
         </div>
+
         <h3>What would you like to know?</h3>
+
         <p>
           Ask a question about your selected document.
           Retrieved passages will appear with the answer.
         </p>
+
         <div className="example-questions">
           <span>Try asking</span>
           <p>Summarize this document</p>
@@ -41,24 +51,33 @@ export default function ChatPanel({ messages, loading }) {
 
           <div className="message-body">
             <strong>
-              {message.role === "assistant" ? "DocuMind AI" : "You"}
+              {message.role === "assistant"
+                ? "DocuMind AI"
+                : "You"}
             </strong>
 
-            <p className="message-content">{message.content}</p>
+            <div className="message-content">
+              <ReactMarkdown>
+                {message.content || ""}
+              </ReactMarkdown>
+            </div>
 
             {message.role === "assistant" &&
               message.sources?.length > 0 && (
                 <div className="sources">
                   <h4>
-                    <FileText size={15} /> Sources used
+                    <FileText size={15} />
+                    Sources used
                   </h4>
 
-                  {message.sources.map((source, sourceIndex) => (
-                    <SourceCard
-                      key={`${source.page}-${sourceIndex}`}
-                      source={source}
-                    />
-                  ))}
+                  {message.sources.map(
+                    (source, sourceIndex) => (
+                      <SourceCard
+                        key={`${source.page}-${sourceIndex}`}
+                        source={source}
+                      />
+                    )
+                  )}
                 </div>
               )}
           </div>
@@ -68,7 +87,7 @@ export default function ChatPanel({ messages, loading }) {
       {loading && (
         <div className="loading-answer">
           <span className="loading-dot" />
-          Searching your document and generating an answer...
+          DocuMind AI is processing your request...
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@
 
 
 
+
 import faiss
 import numpy as np
 
@@ -38,6 +39,9 @@ class DocumentRetriever:
 
     @classmethod
     def _generate_embeddings(cls, texts, task_type):
+        if not texts:
+            raise ValueError("No text provided for embedding.")
+
         client = cls._get_client()
         all_embeddings = []
 
@@ -56,6 +60,9 @@ class DocumentRetriever:
             if not response.embeddings:
                 raise ValueError("Google returned no embeddings.")
 
+            if len(response.embeddings) != len(batch):
+                raise ValueError("Embedding count does not match input count.")
+
             for item in response.embeddings:
                 all_embeddings.append(item.values)
 
@@ -64,11 +71,18 @@ class DocumentRetriever:
             dtype=np.float32
         )
 
-        if embeddings.shape != (
+        expected_shape = (
             len(texts),
             EMBEDDING_DIMENSION
-        ):
-            raise ValueError("Unexpected embedding dimensions.")
+        )
+
+        if embeddings.shape != expected_shape:
+            raise ValueError(
+                f"Unexpected embedding dimensions: {embeddings.shape}"
+            )
+
+        if not np.isfinite(embeddings).all():
+            raise ValueError("Embeddings contain invalid values.")
 
         faiss.normalize_L2(embeddings)
 
@@ -87,7 +101,8 @@ class DocumentRetriever:
             raise ValueError("No valid text chunks found.")
 
         texts = [
-            chunk["text"] for chunk in self.chunks
+            chunk["text"]
+            for chunk in self.chunks
         ]
 
         embeddings = self._generate_embeddings(
@@ -101,29 +116,53 @@ class DocumentRetriever:
 
         self.index.add(embeddings)
 
-    def search(self, question, top_k=TOP_K):
+    def search(
+        self,
+        question,
+        top_k=TOP_K,
+        min_score=None
+    ):
         if self.index is None:
             raise ValueError("Index a document before searching.")
 
         if not question or not question.strip():
             raise ValueError("Question cannot be empty.")
 
+        if top_k <= 0:
+            raise ValueError("top_k must be greater than zero.")
+
         query_embeddings = self._generate_embeddings(
-            [question],
+            [question.strip()],
             "RETRIEVAL_QUERY"
+        )
+
+        search_count = min(
+            top_k,
+            self.index.ntotal
         )
 
         scores, indices = self.index.search(
             query_embeddings,
-            min(top_k, self.index.ntotal)
+            search_count
         )
 
         results = []
 
         for score, idx in zip(scores[0], indices[0]):
-            if idx >= 0:
-                result = dict(self.chunks[int(idx)])
-                result["score"] = float(score)
-                results.append(result)
+
+            if idx < 0:
+                continue
+
+            score = float(score)
+
+            # Optional relevance filtering
+            if min_score is not None and score < min_score:
+                continue
+
+            result = dict(self.chunks[int(idx)])
+
+            result["score"] = score
+
+            results.append(result)
 
         return results
